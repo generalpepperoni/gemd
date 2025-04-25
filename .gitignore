@@ -1,0 +1,7 @@
+# ROS
+build/
+devel/
+.catkin_workspace
+
+# PC
+.idea/
