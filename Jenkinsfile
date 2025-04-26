@@ -151,18 +151,16 @@ spec:
 //                 }
 //             }
 //         }
-//     }
-
-
+    }
 
     post {
         always {
             container('kubectl') {
                 withCredentials([file(credentialsId: 'kubecfg-gemd', variable: 'KUBECONFIG')]) {
-                sh "helm uninstall gemd -n ${K8S_NS} || true"
-
-                // Also ns can be deleted, if kubectl token allows ns delete operation
-                // sh "kubectl delete namespace ${K8S_NS} || true"
+                    sh "helm uninstall gemd -n ${K8S_NS} || true"
+                    // Also ns can be deleted, if kubectl token allows ns delete operation
+                    // sh "kubectl delete namespace ${K8S_NS} || true"
+                }
             }
         }
         success {
