@@ -11,8 +11,12 @@ spec:
   containers:
   - name: helm
     image: alpine/helm:3.12.3
+    command: ['sleep']
+    args: ['infinity']
   - name: kubectl
     image: bitnami/kubectl:1.27.4
+    command: ['sleep']
+    args: ['infinity']
 """
         }
     }
