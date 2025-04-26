@@ -2,10 +2,10 @@ name: GEMd Docker Build and Push
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "devel" ]
     tags: [ "v*" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "devel" ]
 
 jobs:
   build:
