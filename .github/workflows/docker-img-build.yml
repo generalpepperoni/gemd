@@ -39,8 +39,8 @@ jobs:
           file: ./Dockerfile
           target: gem-base
           tags: |
-            ghcr.io/generalpepperoni/gemd-slim:latest
-            ghcr.io/generalpepperoni/gemd-slim:${{ steps.sha.outputs.short_sha }}
+            ghcr.io/generalpepperoni/gemd-core:latest
+            ghcr.io/generalpepperoni/gemd-core:${{ steps.sha.outputs.short_sha }}
           push: ${{ github.event_name != 'pull_request' }}
 
       - name: Build and push gem-desktop image
@@ -50,6 +50,6 @@ jobs:
           file: ./Dockerfile
           target: gem-desktop
           tags: |
-            ghcr.io/generalpepperoni/gemd-full:latest
-            ghcr.io/generalpepperoni/gemd-full:${{ steps.sha.outputs.short_sha }}
+            ghcr.io/generalpepperoni/gemd-desktop:latest
+            ghcr.io/generalpepperoni/gemd-desktop:${{ steps.sha.outputs.short_sha }}
           push: ${{ github.event_name != 'pull_request' }}

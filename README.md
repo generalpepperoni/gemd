@@ -28,7 +28,7 @@ xhost +local:root
 
 Build GEMd image on local machine
 ```shell
-docker build --target gem-desktop --tag gemd-full:local .
+docker build --target gem-desktop --tag gemd-desktop:local .
 ```
 
 Run GEMd container with X11 GUI application support
@@ -38,9 +38,9 @@ docker run --rm -it \
     --volume="$HOME/.Xauthority:/root/.Xauthority:rw" \
     --network=host \
     --name gemd \
-    gemd-full:local
+    gemd-desktop:local
     # In case of skipped local build, run container directly from ghcr.io image
-    #ghcr.io/generalpepperoni/gemd-full:latest
+    #ghcr.io/generalpepperoni/gemd-desktop:latest
 ```
 
 
@@ -48,8 +48,8 @@ docker run --rm -it \
 
 GEMd can run in headless mode without GUI support and additional dev tools 
 ```shell
-docker pull ghcr.io/generalpepperoni/gemd-slim:latest
-docker run --rm -itd --network=host --name gemd ghcr.io/generalpepperoni/gemd-slim:latest
+docker pull ghcr.io/generalpepperoni/gemd-core:latest
+docker run --rm -itd --network=host --name gemd ghcr.io/generalpepperoni/gemd-core:latest
 ```
 
 
