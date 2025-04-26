@@ -35,8 +35,7 @@ spec:
                     // Option 1: Using complete kubeconfig file
                     kubeconfig(
                         credentialsId: 'kubecfg-gemd',
-                        serverUrl: '',
-                        namespace: env.K8S_NS
+                        serverUrl: ''
                     )
 
                     // Verify access
@@ -60,8 +59,7 @@ spec:
                 container('helm') {
                     kubeconfig(
                         credentialsId: 'kubecfg-gemd',
-                        serverUrl: '',
-                        namespace: env.K8S_NS
+                        serverUrl: ''
                     )
 
                     // Atomic deploy of GEMd Helm chart
