@@ -1,31 +1,67 @@
 #!/usr/bin/env groovy
 
 pipeline {
-    agent any
+    agent {
+        kubernetes {
+            label 'gemd-agent-pod'
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins-agent
+  containers:
+  - name: helm
+    image: alpine/helm:3.12.3
+  - name: kubectl
+    image: bitnami/kubectl:1.27.4
+"""
+        }
+    }
     environment {
-        CLICKHOUSE_TABLE = 'gem_cte_metrics'
-        SIM_IMG = 'ghcr.io/generalpepperoni/gemd-core:latest'
+        SIM_IMG = 'ghcr.io/generalpepperoni/gemd-core'
         SIM_TAG = 'latest'
         K8S_NS = "gemd-dev"
         // Better to create multiple NS with unique names
         // K8S_NS = "gemd-dev-${env.BUILD_NUMBER}"
+//         CLICKHOUSE_TABLE = 'gem_cte_metrics'
 //         CLICKHOUSE_HOST = 'clickhouse-host'
 //         CLICKHOUSE_USER = credentials('clickhouse-user')
 //         CLICKHOUSE_PASS = credentials('clickhouse-pass')
     }
     stages {
+        stage('Configure Kubernetes Access') {
+            steps {
+                container('kubectl') {
+                    // Option 1: Using complete kubeconfig file
+                    kubeconfig(
+                        credentialsId: 'kubecfg-gemd',
+                        namespace: env.K8S_NS
+                    )
+
+                    // Verify access
+                    sh 'kubectl cluster-info'
+                }
+            }
+        }
         stage('Prepare k8s Namespace') {
             steps {
-                script {
-                    // Create namespace
-                    sh "kubectl create namespace ${K8S_NS} || true"
+                container('kubectl') {
+                    script {
+                        // kubectl commands will work directly
+                        sh "kubectl create namespace ${K8S_NS} || true"
+                    }
                 }
             }
         }
 
         stage('Deploy Gazebo Simulator') {
             steps {
-                script {
+                container('helm') {
+                    kubeconfig(
+                        credentialsId: 'kubecfg-gemd',
+                        namespace: env.K8S_NS
+                    )
+
                     // Atomic deploy of GEMd Helm chart
                     sh """
                     helm upgrade --install gemd ./helm \
@@ -37,16 +73,6 @@ pipeline {
                         --timeout 10m \
                         --cleanup-on-fail
                     """
-
-                    // Get pod name with retries
-                    waitUntil {
-                        env.POD_NAME = sh(
-                            script: "kubectl get pods -n ${K8S_NS} -l app=gemd-core -o jsonpath='{.items[0].metadata.name}' --field-selector=status.phase=Running",
-                            returnStdout: true
-                        ).trim()
-                        return status == "Running"
-                        // return env.POD_NAME != null && !env.POD_NAME.isEmpty()
-                    }
                 }
             }
         }
@@ -62,7 +88,7 @@ pipeline {
                             containerTemplate(
                                 name: 'pure-pursuit',
                                 image: SIM_IMG,
-                                command: 'cat',
+//                                 command: 'cat',
                                 ttyEnabled: true,
                                 resourceRequestCpu: '500m',
                                 resourceLimitCpu: '1000m',
@@ -72,7 +98,7 @@ pipeline {
                             containerTemplate(
                                 name: 'crosstrack-validation',
                                 image: SIM_IMG,
-                                command: 'cat',
+//                                 command: 'cat',
                                 ttyEnabled: true,
                                 resourceRequestCpu: '300m',
                                 resourceLimitCpu: '500m',
@@ -126,43 +152,9 @@ pipeline {
                 }
             }
         }
-
-        stage('Export to ClickHouse') {
-            steps {
-                script {
-                    podTemplate(
-                        cloud: 'kubernetes',
-                        namespace: K8S_NS,
-                        containers: [
-                            containerTemplate(
-                                name: 'data-exporter',
-                                image: 'clickhouse/clickhouse-client:latest',
-                                ttyEnabled: true,
-                                command: 'cat'
-                            )
-                        ],
-                        volumes: [
-                            emptyDirVolume(mountPath: '/tmp/ros', memory: false)
-                        ]
-                    ) {
-                        node(POD_LABEL) {
-                            container('data-exporter') {
-                                sh "kubectl cp ${env.POD_NAME}:/tmp/ros_gem_ct_errors.csv /tmp/ros/ct_errors_extracted.csv -n ${K8S_NS}"
-
-                                sh """
-                                clickhouse-client \
-                                    --host ${CLICKHOUSE_HOST} \
-                                    --user ${CLICKHOUSE_USER} \
-                                    --password ${CLICKHOUSE_PASS} \
-                                    --query "INSERT INTO ${CLICKHOUSE_TABLE} FORMAT CSV" < /tmp/ros/ct_errors_extracted.csv
-                                """
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
+
+
 
     post {
         always {
@@ -175,14 +167,14 @@ pipeline {
         }
         success {
             emailext (
-                subject: "SUCCESS: GEM Simulation Pipeline - Build #${env.BUILD_NUMBER}",
+                subject: "SUCCESS: GEM Simulation Pipeline",
                 body: "All stages completed successfully.\nCrosstrack Error = ${env.CT_ERROR}",
                 to: 'aleksei.kondrashov94@gmail.com'
             )
         }
         failure {
             emailext (
-                subject: "FAILURE: GEM Simulation Pipeline - Build #${env.BUILD_NUMBER}",
+                subject: "FAILURE: GEM Simulation Pipeline",
                 body: "One or more stages failed.\nLast CT Error = ${env.get('CT_ERROR', 'N/A')}",
                 to: 'aleksei.kondrashov94@gmail.com'
             )
