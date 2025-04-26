@@ -1,0 +1,4 @@
+[submodule "src/POLARIS_GEM_e2"]
+	path = src/POLARIS_GEM_e2
+	url = https://github.com/generalpepperoni/POLARIS_GEM_e2.git
+        branch = devel
