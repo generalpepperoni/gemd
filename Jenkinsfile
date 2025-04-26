@@ -1,5 +1,3 @@
-#!/usr/bin/env groovy
-
 pipeline {
     agent {
         kubernetes {
@@ -11,11 +9,13 @@ spec:
   containers:
   - name: helm
     image: alpine/helm:3.12.3
-    command: ["cat"]
+    command: ["/bin/sh", "-c", "--"]
+    args: ["while true; do sleep 30; done;"]
     tty: true
   - name: kubectl
     image: bitnami/kubectl:1.27.4
-    command: ["cat"]
+    command: ["/bin/sh", "-c", "--"]
+    args: ["while true; do sleep 30; done;"]
     tty: true
 """
         }
@@ -42,8 +42,7 @@ spec:
             steps {
                 container('kubectl') {
                     withCredentials([file(credentialsId: 'kubecfg-gemd', variable: 'KUBECONFIG')]) {
-                        // Verify access
-                        sh 'kubectl cluster-info'
+                        sh script: "kubectl cluster-info", label: "Verify cluster access"
                     }
                 }
             }
@@ -78,107 +77,33 @@ spec:
                 }
             }
         }
-
-//         stage('Run Simulation Workflow') {
-//             steps {
-//                 script {
-//                     podTemplate(
-//                         cloud: 'kubernetes',
-//                         namespace: K8S_NS,
-// //                         label: 'SIMULATION-POD', // Add label for node selection
-//                         containers: [
-//                             containerTemplate(
-//                                 name: 'pure-pursuit',
-//                                 image: SIM_IMG,
-// //                                 command: 'cat',
-//                                 ttyEnabled: true,
-//                                 resourceRequestCpu: '500m',
-//                                 resourceLimitCpu: '1000m',
-//                                 resourceRequestMemory: '512Mi',
-//                                 resourceLimitMemory: '1Gi'
-//                             ),
-//                             containerTemplate(
-//                                 name: 'crosstrack-validation',
-//                                 image: SIM_IMG,
-// //                                 command: 'cat',
-//                                 ttyEnabled: true,
-//                                 resourceRequestCpu: '300m',
-//                                 resourceLimitCpu: '500m',
-//                                 resourceRequestMemory: '256Mi',
-//                                 resourceLimitMemory: '512Mi'
-//                             )
-//                         ],
-//                         volumes: [
-//                             emptyDirVolume(mountPath: '/tmp/ros', memory: false)
-//                         ]
-//                     ) {
-//                         node('SIMULATION-POD') {
-//                             parallel(
-//                                 "Pure Pursuit Simulation": {
-//                                     container('pure-pursuit') {
-//                                         sh 'bash -lc "rosrun gem_pure_pursuit_sim pure_pursuit_sim.py"'
-//                                     }
-//                                 },
-//                                 "Crosstrack Validation": {
-//                                     container('crosstrack-validation') {
-//                                         sh 'bash -lc "rosrun gem_pure_pursuit_sim crosstrack_error_validation.py --persist --duration=60"'
-//                                     }
-//                                 }
-//                             )
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//
-//         stage('Validate CTE Average') {
-//             steps {
-//                 script {
-//                     def cteAvg = sh(
-//                         script: """
-//                             kubectl exec ${env.POD_NAME} -n ${K8S_NS} -- bash -lc \
-//                             "rostopic echo -n 1 /gem/metrics/ct_error_avg_last 2>/dev/null | grep '^data:' | awk '{print \$NF}'"
-//                         """,
-//                         returnStdout: true
-//                     ).trim()
-//
-//                     echo "======================"
-//                     echo "CTE Average: ${cteAvg}"
-//                     echo "======================"
-//
-//                     env.CT_ERROR = cteAvg.toFloat()
-//
-//                     if (cteAvgFloat <= -1.0 || cteAvgFloat >= 1.0) {
-//                         error("CTE average ${cteAvgFloat} is outside acceptable range [-1.0, 1.0]")
-//                     }
-//                 }
-//             }
-//         }
     }
 
     post {
         always {
             container('kubectl') {
                 withCredentials([file(credentialsId: 'kubecfg-gemd', variable: 'KUBECONFIG')]) {
-                    sh "helm uninstall gemd -n ${K8S_NS} || true"
-                    // Also ns can be deleted, if kubectl token allows ns delete operation
-                    // sh "kubectl delete namespace ${K8S_NS} || true"
+                    sh script: "helm uninstall gemd -n ${K8S_NS} || true", label: "Cleanup release"
+                    sh script: "kubectl delete namespace ${K8S_NS} || true", label: "Delete namespace"
                 }
             }
         }
         success {
-            emailext (
+            emailext(
                 subject: "SUCCESS: GEM Simulation Pipeline",
                 body: "All stages completed successfully.\nCrosstrack Error = ${env.CT_ERROR}",
                 to: 'aleksei.kondrashov94@gmail.com'
             )
         }
         failure {
-            emailext (
-                subject: "FAILURE: GEM Simulation Pipeline",
-                body: "One or more stages failed.\nLast CT Error = ${env.get('CT_ERROR', 'N/A')}",
-                to: 'aleksei.kondrashov94@gmail.com'
-            )
+            script {
+                def ctError = env.CT_ERROR ?: 'N/A'
+                emailext(
+                    subject: "FAILURE: GEM Simulation Pipeline",
+                    body: "One or more stages failed.\nLast CT Error = ${ctError}",
+                    to: 'aleksei.kondrashov94@gmail.com'
+                )
+            }
         }
     }
 }
