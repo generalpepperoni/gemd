@@ -35,6 +35,7 @@ spec:
                     // Option 1: Using complete kubeconfig file
                     kubeconfig(
                         credentialsId: 'kubecfg-gemd',
+                        serverUrl: '',
                         namespace: env.K8S_NS
                     )
 
@@ -59,6 +60,7 @@ spec:
                 container('helm') {
                     kubeconfig(
                         credentialsId: 'kubecfg-gemd',
+                        serverUrl: '',
                         namespace: env.K8S_NS
                     )
 
