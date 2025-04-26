@@ -9,16 +9,16 @@ pipeline {
         K8S_NS = "gemd-dev"
         // Better to create multiple NS with unique names
         // K8S_NS = "gemd-dev-${env.BUILD_NUMBER}"
+//         CLICKHOUSE_HOST = 'clickhouse-host'
+//         CLICKHOUSE_USER = credentials('clickhouse-user')
+//         CLICKHOUSE_PASS = credentials('clickhouse-pass')
     }
     stages {
         stage('Prepare k8s Namespace') {
             steps {
                 script {
-                    // Create fresh namespace
-                    sh "kubectl create namespace ${env.NAMESPACE} || true"
-
-                    // Add any necessary resources (like image pull secrets)
-                    // sh "kubectl create secret docker-registry my-registry-key ... -n ${env.NAMESPACE}"
+                    // Create namespace
+                    sh "kubectl create namespace ${K8S_NS} || true"
                 }
             }
         }
@@ -38,19 +38,14 @@ pipeline {
                         --cleanup-on-fail
                     """
 
-                    // get pod name and wait till it ready (in addition to readiness probe)
-                    def getPodName = sh(
-                        script: "kubectl get pods -n ${env.K8S_NS} -l app=g emd-core -o jsonpath='{.items[0].metadata.name}'",
-                        returnStdout: true
-                    ).trim()
-                    env.POD_NAME = getPodName
-
+                    // Get pod name with retries
                     waitUntil {
-                        def status = sh(
-                            script: "kubectl get pod ${env.POD_NAME} -n ${env.K8S_NS} -o jsonpath='{.status.phase}'",
+                        env.POD_NAME = sh(
+                            script: "kubectl get pods -n ${K8S_NS} -l app=gemd-core -o jsonpath='{.items[0].metadata.name}' --field-selector=status.phase=Running",
                             returnStdout: true
                         ).trim()
                         return status == "Running"
+                        // return env.POD_NAME != null && !env.POD_NAME.isEmpty()
                     }
                 }
             }
@@ -59,15 +54,15 @@ pipeline {
         stage('Run Simulation Workflow') {
             steps {
                 script {
-                    // Define pod template for simulation tasks
-                    def simulationPod = podTemplate(
+                    podTemplate(
                         cloud: 'kubernetes',
-                        namespace: env.K8S_NS,
+                        namespace: K8S_NS,
+//                         label: 'SIMULATION-POD', // Add label for node selection
                         containers: [
                             containerTemplate(
                                 name: 'pure-pursuit',
-                                image: env.SIM_IMG,
-                                command: 'cat',  // Keep container running
+                                image: SIM_IMG,
+                                command: 'cat',
                                 ttyEnabled: true,
                                 resourceRequestCpu: '500m',
                                 resourceLimitCpu: '1000m',
@@ -76,20 +71,20 @@ pipeline {
                             ),
                             containerTemplate(
                                 name: 'crosstrack-validation',
-                                image: env.SIM_IMG,
+                                image: SIM_IMG,
                                 command: 'cat',
                                 ttyEnabled: true,
                                 resourceRequestCpu: '300m',
                                 resourceLimitCpu: '500m',
                                 resourceRequestMemory: '256Mi',
                                 resourceLimitMemory: '512Mi'
-                            ),
-                            volumes: [
-                                // volumes placeholder
-                            ]
+                            )
+                        ],
+                        volumes: [
+                            emptyDirVolume(mountPath: '/tmp/ros', memory: false)
                         ]
                     ) {
-                        node(POD_LABEL) {
+                        node('SIMULATION-POD') {
                             parallel(
                                 "Pure Pursuit Simulation": {
                                     container('pure-pursuit') {
@@ -109,29 +104,35 @@ pipeline {
         }
 
         stage('Validate CTE Average') {
-            def cteAvg = sh(
-                script: """
-                    kubectl exec ${env.POD_NAME} -- bash -lc \
-                    "rostopic echo -n 1 /gem/metrics/ct_error_avg_last 2>/dev/null | grep '^data:' | awk '{print \$NF}'"
-                """,
-                returnStdout: true
-            ).trim()
+            steps {
+                script {
+                    def cteAvg = sh(
+                        script: """
+                            kubectl exec ${env.POD_NAME} -n ${K8S_NS} -- bash -lc \
+                            "rostopic echo -n 1 /gem/metrics/ct_error_avg_last 2>/dev/null | grep '^data:' | awk '{print \$NF}'"
+                        """,
+                        returnStdout: true
+                    ).trim()
 
-            echo "CTE Average: ${cteAvg}"
-            cteAvgFloat = cteAvg.toFloat()
-            env.CT_ERROR = cteAvgFloat
+                    echo "======================"
+                    echo "CTE Average: ${cteAvg}"
+                    echo "======================"
 
-            if (cteAvgFloat <= -1.0 || cteAvgFloat >= 1.0) {
-                error("CTE average ${cteAvgFloat} is outside acceptable range [-1.0, 1.0]")
+                    env.CT_ERROR = cteAvg.toFloat()
+
+                    if (cteAvgFloat <= -1.0 || cteAvgFloat >= 1.0) {
+                        error("CTE average ${cteAvgFloat} is outside acceptable range [-1.0, 1.0]")
+                    }
+                }
             }
         }
 
         stage('Export to ClickHouse') {
             steps {
                 script {
-                    // Define pod template for data export
-                    def exportPod = podTemplate(
+                    podTemplate(
                         cloud: 'kubernetes',
+                        namespace: K8S_NS,
                         containers: [
                             containerTemplate(
                                 name: 'data-exporter',
@@ -141,22 +142,21 @@ pipeline {
                             )
                         ],
                         volumes: [
-                            hostPathVolume(hostPath: '/tmp', mountPath: '/tmp/ros')
+                            emptyDirVolume(mountPath: '/tmp/ros', memory: false)
                         ]
-                    )
+                    ) {
+                        node(POD_LABEL) {
+                            container('data-exporter') {
+                                sh "kubectl cp ${env.POD_NAME}:/tmp/ros_gem_ct_errors.csv /tmp/ros/ct_errors_extracted.csv -n ${K8S_NS}"
 
-                    exportPod.node {
-                        container('data-exporter') {
-                            // Copy CSV from simulator pod
-                            sh "kubectl cp ${env.POD_NAME}:/tmp/ros_gem_ct_errors.csv /tmp/ros/ct_errors_extracted.csv"
-
-                            sh """
-                            clickhouse-client \
-                                --host ${env.CLICKHOUSE_HOST} \
-                                --user ${env.CLICKHOUSE_USER} \
-                                --password ${env.CLICKHOUSE_PASS} \
-                                --query "INSERT INTO ${env.CLICKHOUSE_TABLE} FORMAT CSV" < /tmp/ros//ct_errors_extracted.csv
-                            """
+                                sh """
+                                clickhouse-client \
+                                    --host ${CLICKHOUSE_HOST} \
+                                    --user ${CLICKHOUSE_USER} \
+                                    --password ${CLICKHOUSE_PASS} \
+                                    --query "INSERT INTO ${CLICKHOUSE_TABLE} FORMAT CSV" < /tmp/ros/ct_errors_extracted.csv
+                                """
+                            }
                         }
                     }
                 }
@@ -166,20 +166,24 @@ pipeline {
 
     post {
         always {
-            // Cleanup Helm deployment
-            sh 'helm -n ${env.K8S_NS} uninstall gemd || true'
+            script {
+                sh "helm uninstall gemd -n ${K8S_NS} || true"
+
+                // Also ns can be deleted, if kubectl token allows ns delete operation
+                // sh "kubectl delete namespace ${K8S_NS} || true"
+            }
         }
         success {
             emailext (
-                subject: 'SUCCESS: GEM Simulation Pipeline',
-                body: 'All stages completed successfully. Crosstrack Error = ${env.CT_ERROR}',
+                subject: "SUCCESS: GEM Simulation Pipeline - Build #${env.BUILD_NUMBER}",
+                body: "All stages completed successfully.\nCrosstrack Error = ${env.CT_ERROR}",
                 to: 'aleksei.kondrashov94@gmail.com'
             )
         }
         failure {
             emailext (
-                subject: 'FAILURE: GEM Simulation Pipeline',
-                body: 'One or more stages failed. Crosstrack Error = ${env.CT_ERROR}',
+                subject: "FAILURE: GEM Simulation Pipeline - Build #${env.BUILD_NUMBER}",
+                body: "One or more stages failed.\nLast CT Error = ${env.get('CT_ERROR', 'N/A')}",
                 to: 'aleksei.kondrashov94@gmail.com'
             )
         }
