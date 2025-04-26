@@ -8,7 +8,6 @@ pipeline {
 apiVersion: v1
 kind: Pod
 spec:
-  serviceAccountName: jenkins-agent
   containers:
   - name: helm
     image: alpine/helm:3.12.3
