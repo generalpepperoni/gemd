@@ -16,9 +16,6 @@ pipeline {
         }
     }
     
-    environment {
-    }
-
     stages {
         stage('Run Simulation Workflow') {
             steps {
