@@ -11,7 +11,7 @@ pipeline {
                     image: ghcr.io/generalpepperoni/gemd-core:latest
                     tty: true
                     command: ["/opt/entrypoint.sh"]
-                    args: ["roslaunch gem_gazebo gem_gazebo_rviz.launch velodyne_points:='true'"]
+                    args: ["source /opt/gem_ws/devel/setup.bash && roslaunch gem_gazebo gem_gazebo_rviz.launch velodyne_points:='true'`"]
                     env:
                     - name: ROS_MASTER_URI
                       value: "http://localhost:11311"
