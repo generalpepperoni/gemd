@@ -13,10 +13,10 @@ https://github.com/generalpepperoni/POLARIS_GEM_e2
 
 | NABC            | Analysis |  
 |-----------------|----------|  
-| **Needs**       | - ROS 1 Noetic/Ubuntu 20.04 reach **EOL May 2025** (security, compatibility risks)  <br> - Legacy stack discourages new developers  <br> - Suboptimal performance on modern hardware (GPUs, multi-core CPUs) |  
-| **Approach**    | - Port to **ROS 2 Humble/Iron** (Ubuntu 22.04/24.04 LTS)  <br> - Maintain backward compatibility via Dockerized ROS 1  <br> - Optimize for GPU acceleration (NVIDIA Docker) and multi-threading |  
-| **Benefits**    | - **Long-term support**: Aligns with ROS 2’s active lifecycle  <br> - **Easier adoption**: Uses modern tools familiar to new developers  <br> - **Performance**: Leverages modern hardware (faster simulation, scalability)  <br> - **Ecosystem**: Access to newer ROS 2 packages and community tools |  
-| **Competitors** | - **Web-based simulators** (e.g., AWSIM, Webots): Require cloud/licensing, lack GEM’s specificity  <br> - **Other ROS 1 simulators**: Will face same EOL obsolescence without migration | 
+| **Needs**       | - ROS 1 Noetic & Ubuntu 20.04 reach EOL in Q2 2025 <br> - Using legacy stack could be tricky and vulnerable |  
+| **Approach**    | - Full-fledged ROS + GEM e2 simulator  <br> - Optimized for GPU GUI ROS tools |  
+| **Benefits**    | - **Ecosystem**: Free and easy-to-use simulator  <br> - **Easier adoption**: Good for ROS onboarding  <br> - **Performance**: Leverages modern hardware  <br> |  
+| **Competitors** | - **Paid** Ubuntu Pro for 20.04 ESM  <br> - **Other ROS simulators** (e.g., AWSIM, Webots) |  
 
 
 ## Environment setup
