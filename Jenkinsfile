@@ -4,7 +4,7 @@ pipeline {
     agent {
         kubernetes {
             label 'gemd-agent-pod'
-            yaml """
+            yaml '''
 apiVersion: v1
 kind: Pod
 spec:
@@ -17,7 +17,7 @@ spec:
     image: bitnami/kubectl:1.27.4
     tty: true
     command: ["cat"]
-"""
+'''
         }
     }
 
@@ -28,7 +28,7 @@ spec:
     environment {
         SIM_IMG = 'ghcr.io/generalpepperoni/gemd-core'
         SIM_TAG = 'latest'
-        K8S_NS = "gemd-dev"
+        K8S_NS = 'gemd-dev'
         // Better to create multiple NS with unique names
         // K8S_NS = "gemd-dev-${env.BUILD_NUMBER}"
         // CLICKHOUSE_TABLE = 'gem_cte_metrics'
@@ -43,7 +43,7 @@ spec:
             steps {
                 container('kubectl') {
                     withCredentials([file(credentialsId: 'kubecfg-gemd', variable: 'KUBECONFIG')]) {
-                        sh label: "Create k8s ns" script: "kubectl create namespace ${K8S_NS} || true"
+                        sh label: 'Create k8s ns', script: "kubectl create namespace ${K8S_NS} || true"
                     }
                 }
             }
@@ -55,7 +55,7 @@ spec:
                     withCredentials([file(credentialsId: 'kubecfg-gemd', variable: 'KUBECONFIG')]) {
                         script {
                             // Atomic deploy of GEMd Helm chart
-                            sh label: "GEMd Helm chart atomic deploy script: """
+                            sh label: 'GEMd Helm chart atomic deploy', script: """
                                 helm upgrade --install gemd ./helm \
                                     --namespace ${env.K8S_NS} \
                                     --set image.repository=${env.SIM_IMG} \
@@ -113,12 +113,12 @@ spec:
                         // Run simulator and validation scripts in parallel
                         node('SIMULATION-POD') {
                             parallel(
-                                "Pure Pursuit Simulation": {
+                                'Pure Pursuit Simulation': {
                                     container('pure-pursuit') {
                                         sh 'bash -lc "rosrun gem_pure_pursuit_sim pure_pursuit_sim.py"'
                                     }
                                 },
-                                "Crosstrack Validation": {
+                                'Crosstrack Validation': {
                                     container('crosstrack-validation') {
                                         sh 'bash -lc "rosrun gem_pure_pursuit_sim crosstrack_error_validation.py --persist --duration=60"'
                                     }
@@ -141,9 +141,9 @@ spec:
                         returnStdout: true
                     ).trim()
 
-                    echo "======================"
+                    echo '======================'
                     echo "CTE Average: ${cteAvg}"
-                    echo "======================"
+                    echo '======================'
 
                     float cteAvgFloat = cteAvg.toFloat()
                     env.CT_ERROR_AVG = cteAvg
