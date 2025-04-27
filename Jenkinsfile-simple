@@ -2,34 +2,74 @@ pipeline {
     agent {
         kubernetes {
             label 'gemd-agent-pod'
-            yaml '''
+            yaml """
                 apiVersion: v1
                 kind: Pod
                 spec:
+                  serviceAccountName: jenkins-agent
                   containers:
                   - name: gemd
                     image: ghcr.io/generalpepperoni/gemd-core:latest
                     tty: true
-                  - name: helm
-                    image: alpine/helm:3.12.3
-                    command: ["/bin/sh", "-c"]
-                    args: ["sleep infinity"]
-                    tty: true
-                  - name: kubectl
-                    image: bitnami/kubectl:1.27.4
-                    command: ["/bin/sh", "-c"]
-                    args: ["sleep infinity"]
-                    tty: true
-                '''
+                    command: ['/bin/bash', '-c', 'roslaunch gem_gazebo gem_gazebo_rviz.launch velodyne_points:=true']
+            """
         }
     }
+    
+    environment {
+    }
+
     stages {
-        stage('Build Application') {
+        stage('Run Simulation Workflow') {
             steps {
                 container('gemd') {
-                    sh 'bash -lc "rosrun gem_pure_pursuit_sim pure_pursuit_sim.py"'
+                    sh """
+                    rosrun gem_pure_pursuit_sim pure_pursuit_sim.py &
+                    rosrun gem_pure_pursuit_sim crosstrack_error_validation.py \
+                        --persist --duration=60 &
+                    wait
+                    """
                 }
             }
+        }
+
+        stage('Validate CTE Average') {
+            steps {
+                container('gemd') {
+                    script {
+                        env.CT_ERROR = sh(
+                            script: """
+                            rostopic echo -n 1 /gem/metrics/ct_error_avg_last 2>/dev/null | \
+                                grep '^data:' | awk '{print \$NF}'
+                            """,
+                            returnStdout: true
+                        ).trim().toFloat()
+
+                        echo "CTE Average: ${env.CT_ERROR}"
+                        
+                        if (env.CT_ERROR <= -1.0 || env.CT_ERROR >= 1.0) {
+                            error("CTE average ${env.CT_ERROR} out of range [-1.0, 1.0]")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            emailext (
+                subject: "SUCCESS: GEM Simulation #${env.BUILD_NUMBER}",
+                body: "CT Error: ${env.CT_ERROR}",
+                to: 'aleksei.kondrashov94@gmail.com'
+            )
+        }
+        failure {
+            emailext (
+                subject: "FAILED: GEM Simulation #${env.BUILD_NUMBER}",
+                body: "Last CT Error: ${env.get('CT_ERROR', 'N/A')}",
+                to: 'aleksei.kondrashov94@gmail.com'
+            )
         }
     }
 }
