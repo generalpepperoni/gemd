@@ -60,7 +60,7 @@ docker run --rm -it \
 GEMd can run in headless mode without GUI support and additional dev tools:
 ```shell
 docker pull ghcr.io/generalpepperoni/gemd-core:latest
-docker run --rm -itd --network=host --name gemd ghcr.io/generalpepperoni/gemd-core:latest
+docker run --rm -it --network=host --name gemd ghcr.io/generalpepperoni/gemd-core:latest
 ```
 
 
