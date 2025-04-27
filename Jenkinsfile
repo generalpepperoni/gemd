@@ -38,7 +38,7 @@ spec:
     }
 
     stages {
-        stage('Configure Kubernetes Access') {
+        stage('Check kubectl in agents') {
             steps {
                 container('kubectl') {
                     withCredentials([file(credentialsId: 'kubecfg-gemd', variable: 'KUBECONFIG')]) {
