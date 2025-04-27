@@ -1,3 +1,5 @@
+// FIXME: Work in progress!
+
 pipeline {
     agent {
         kubernetes {
@@ -45,10 +47,15 @@ pipeline {
                             returnStdout: true
                         ).trim().toFloat()
 
-                        echo "CTE Average: ${env.CT_ERROR}"
-                        
-                        if (env.CT_ERROR <= -1.0 || env.CT_ERROR >= 1.0) {
-                            error("CTE average ${env.CT_ERROR} out of range [-1.0, 1.0]")
+                        echo "======================"
+                        echo "CTE Average: ${cteAvg}"
+                        echo "======================"
+
+                        float cteAvgFloat = cteAvg.toFloat()
+                        env.CT_ERROR_AVG = cteAvg
+
+                        if (cteAvgFloat <= -1.0 || cteAvgFloat >= 1.0) {
+                            error("CTE average ${cteAvg} is outside acceptable range [-1.0, 1.0]")
                         }
                     }
                 }
@@ -59,15 +66,15 @@ pipeline {
     post {
         success {
             emailext (
-                subject: "SUCCESS: GEM Simulation #${env.BUILD_NUMBER}",
-                body: "CT Error: ${env.CT_ERROR}",
+                subject: "SUCCESS: GEM Simulation Pipeline - Build #${env.BUILD_NUMBER}",
+                body: "All stages completed successfully.\nCrosstrack Error = ${env.CT_ERROR_AVG}",
                 to: 'aleksei.kondrashov94@gmail.com'
             )
         }
         failure {
             emailext (
-                subject: "FAILED: GEM Simulation #${env.BUILD_NUMBER}",
-                body: "Last CT Error: ${env.get('CT_ERROR', 'N/A')}",
+                subject: "FAILURE: GEM Simulation Pipeline - Build #${env.BUILD_NUMBER}",
+                body: "One or more stages failed.\nLast CT Error = ${env.get('CT_ERROR_AVG', 'N/A')}",
                 to: 'aleksei.kondrashov94@gmail.com'
             )
         }
