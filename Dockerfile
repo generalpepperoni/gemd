@@ -19,6 +19,9 @@ RUN mkdir -p /var/log/ros
 
 # Create a workspace and copy ROS packages and GEM src
 RUN mkdir -p /opt/gem_ws/src
+
+# TODO: publish GEM sources in .tar.gz as GitHub Release artifact
+# it will save some build time
 ADD $SRC_URL /tmp/gem_src.zip
 RUN unzip /tmp/gem_src.zip -d /opt/gem_ws/src \
     && rm /tmp/gem_src.zip

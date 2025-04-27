@@ -1,0 +1,22 @@
+image:
+  repository: ghcr.io/generalpepperoni/gemd-core
+  tag: latest
+  pullPolicy: Always
+
+resources:
+  limits:
+    cpu: "3"
+    memory: "5Gi"
+  requests:
+    cpu: "1"
+    memory: "2Gi"
+
+probes:
+  liveness:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 30
+
+service:
+  type: ClusterIP
+  port: 8080
