@@ -10,7 +10,7 @@ pipeline {
                   - name: gemd
                     image: ghcr.io/generalpepperoni/gemd-core:latest
                     tty: true
-                    command: ["/opt/entrypoint.sh"]
+                    command: ["/opt/entrypoint.sh; sleep infinity"]
                     env:
                     - name: ROS_MASTER_URI
                       value: "http://localhost:11311"
