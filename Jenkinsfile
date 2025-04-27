@@ -9,13 +9,13 @@ spec:
   containers:
   - name: helm
     image: alpine/helm:3.12.3
-    command: ["/bin/sh", "-c", "--"]
-    args: ["while true; do sleep 30; done;"]
+    command: ["/bin/sh", "-c"]
+    args: ["sleep infinity"]
     tty: true
   - name: kubectl
     image: bitnami/kubectl:1.27.4
-    command: ["/bin/sh", "-c", "--"]
-    args: ["while true; do sleep 30; done;"]
+    command: ["/bin/sh", "-c"]
+    args: ["sleep infinity"]
     tty: true
 """
         }
@@ -38,6 +38,28 @@ spec:
     }
 
     stages {
+        stage('Configure Kubernetes Access') {
+            steps {
+                container('kubectl') {
+                    withCredentials([file(credentialsId: 'kubecfg-gemd', variable: 'KUBECONFIG')]) {
+                        sh '''#!/bin/sh
+                        echo "--- Basic Diagnostics ---"
+                        echo "Current user: $(whoami)"
+                        echo "KUBECONFIG location: $KUBECONFIG"
+                        ls -la $KUBECONFIG
+                        echo "Kubeconfig contents:"
+                        head -n 5 $KUBECONFIG
+
+                        echo "\\n--- Network Test ---"
+                        curl -Iv https://kubernetes.default.svc.cluster.local
+
+                        echo "\\n--- Kubectl Test ---"
+                        kubectl version --client
+                        '''
+                    }
+                }
+            }
+        }
         stage('Configure Kubernetes Access') {
             steps {
                 container('kubectl') {
