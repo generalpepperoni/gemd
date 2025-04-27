@@ -10,8 +10,8 @@ pipeline {
                   - name: gemd
                     image: ghcr.io/generalpepperoni/gemd-core:latest
                     tty: true
-                    command: ["/bin/sh", "-c"]
-                    args: [roslaunch gem_gazebo gem_gazebo_rviz.launch velodyne_points:=true; sleep infinity']
+                    command: ["/bin/bash", "-c"]
+                    args: ['roslaunch gem_gazebo gem_gazebo_rviz.launch velodyne_points:=true; sleep infinity']
             """
         }
     }
