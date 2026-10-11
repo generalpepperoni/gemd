@@ -30,7 +30,14 @@ git submodule update --init --remote
 
 
 ### Local development setup (with X11 ROS GUI application support)
-Tested on Ubuntu 24.04 (noble) and 20.04.2 (focal)
+
+#### Supported platforms for workstations
+```
+Tested on Ubuntu 24.04 (noble) and 20.04.2 (focal)  
+
+- Current setup does not provide GUI support on MacOS X  
+- Not tested on Windows/WSL setups
+```
 
 At first, allow access to the host`s X11 server:
 ```shell
