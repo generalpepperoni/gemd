@@ -1,4 +1,9 @@
-// FIXME: Work in progress!
+// Example Jenkinsfile for GEMd k8s-ready deployment
+
+/* DISCLAIMER
+ *
+ * This is an example Jenkinsfile pipeline - ONLY FOR REFERENCE
+ */
 
 pipeline {
     agent {
@@ -23,12 +28,15 @@ spec:
 
     options {
         buildDiscarder(logRotator(numToKeepStr: '50', artifactNumToKeepStr: '10'))
+        disableConcurrentBuilds()
+        timeout(time: 1, unit: 'HOURS')
     }
 
     environment {
         SIM_IMG = 'ghcr.io/generalpepperoni/gemd-core'
         SIM_TAG = 'latest'
-        K8S_NS = 'gemd-dev'
+        K8S_NS = "gemd-dev-${env.BUILD_NUMBER}"
+
         // Better to create multiple NS with unique names
         // K8S_NS = "gemd-dev-${env.BUILD_NUMBER}"
         // CLICKHOUSE_TABLE = 'gem_cte_metrics'
@@ -39,6 +47,13 @@ spec:
 
     // Pipeline starts here
     stages {
+
+        stage('Checkout SCM') {
+            steps {
+                checkout scm
+            }
+        }
+
         stage('Prepare k8s Namespace') {
             steps {
                 container('kubectl') {
@@ -51,7 +66,7 @@ spec:
 
         stage('Deploy Gazebo Simulator') {
             steps {
-                container('kubectl') {
+                container('helm') {
                     withCredentials([file(credentialsId: 'kubecfg-gemd', variable: 'KUBECONFIG')]) {
                         script {
                             // Atomic deploy of GEMd Helm chart
@@ -65,11 +80,17 @@ spec:
                                     --timeout 10m \
                                     --cleanup-on-fail
                             """
+                        }
+                    }
+                }
 
+                container('kubectl') {
+                    withCredentials([file(credentialsId: 'kubecfg-gemd', variable: 'KUBECONFIG')]) {
+                        script {
                             // Get pod name
                             waitUntil {
-                                env.POD_NAME = sh(
-                                    script: "kubectl get pods -n ${K8S_NS} -l app=gemd-core -o jsonpath='{.items[0].metadata.name}' --field-selector=status.phase=Running",
+                                def podName = sh(
+                                    script: "kubectl get pods -n ${K8S_NS} -l app=gemd-core -o jsonpath='{.items[0].metadata.name}' --field-selector=status.phase=Running 2>/dev/null || true",
                                     returnStdout: true
                                 ).trim()
                                 return env.POD_NAME != null && !env.POD_NAME.isEmpty()
@@ -90,7 +111,7 @@ spec:
                         containers: [
                             containerTemplate(
                                 name: 'pure-pursuit',
-                                image: SIM_IMG,
+                                image: "${SIM_IMG}:${SIM_TAG}",
                                 command: 'cat',
                                 ttyEnabled: true,
                                 resourceRequestCpu: '500m',
@@ -100,7 +121,7 @@ spec:
                             ),
                             containerTemplate(
                                 name: 'crosstrack-validation',
-                                image: SIM_IMG,
+                                image: "${SIM_IMG}:${SIM_TAG}",
                                 command: 'cat',
                                 ttyEnabled: true,
                                 resourceRequestCpu: '300m',
@@ -111,7 +132,7 @@ spec:
                         ]
                     ) {
                         // Run simulator and validation scripts in parallel
-                        node('SIMULATION-POD') {
+                        node(POD_LABEL) {
                             parallel(
                                 'Pure Pursuit Simulation': {
                                     container('pure-pursuit') {
@@ -155,33 +176,52 @@ spec:
             }
         }
 
+        // Now lets export our collected data to some DB
         stage('Export to ClickHouse') {
             steps {
                 script {
                     podTemplate(
                         cloud: 'kubernetes',
                         namespace: K8S_NS,
+                        volumes: [
+                            emptyDirVolume(mountPath: '/tmp/ros', volumeName: 'shared-data')
+                        ],
                         containers: [
                             containerTemplate(
+                                name: 'kubectl',
+                                image: 'bitnami/kubectl:1.27.4',
+                                ttyEnabled: true,
+                                command: 'cat'
+                            ),
+                            containerTemplate(
                                 name: 'data-exporter',
-                                image: 'clickhouse/clickhouse-client:latest',
+                                image: 'clickhouse/clickhouse-client:21.3.20.1',
                                 ttyEnabled: true,
                                 command: 'cat'
                             )
                         ]
                     ) {
                         node(POD_LABEL) {
-                            container('data-exporter') {
-                                sh "kubectl cp ${env.POD_NAME}:/tmp/ros_gem_ct_errors.csv /tmp/ros/ct_errors_extracted.csv -n ${K8S_NS}"
+                            container('kubectl') {
+                                withCredentials([file(credentialsId: 'kubecfg-gemd', variable: 'KUBECONFIG')]) {
+                                    sh "kubectl cp ${env.POD_NAME}:/tmp/ros_gem_ct_errors.csv /tmp/ros/ct_errors_extracted.csv -n ${K8S_NS}"
+                                }
+                            }
 
-                                // Export CT Error history Clickhouse with high-performance std input
-                                sh """
-                                clickhouse-client \
-                                    --host ${CLICKHOUSE_HOST} \
-                                    --user ${CLICKHOUSE_USER} \
-                                    --password ${CLICKHOUSE_PASS} \
-                                    --query "INSERT INTO ${CLICKHOUSE_TABLE} FORMAT CSV" < /tmp/ros/ct_errors_extracted.csv
-                                """
+                            container('data-exporter') {
+                                withCredentials([
+                                    string(credentialsId: 'clickhouse-user', variable: 'CLICKHOUSE_USER'),
+                                    string(credentialsId: 'clickhouse-pass', variable: 'CLICKHOUSE_PASS')
+                                ]) {
+                                    // Export CT Error history Clickhouse with high-performance std input
+                                    sh """
+                                    clickhouse-client \
+                                        --host ${CLICKHOUSE_HOST} \
+                                        --user ${CLICKHOUSE_USER} \
+                                        --password ${CLICKHOUSE_PASS} \
+                                        --query "INSERT INTO ${CLICKHOUSE_TABLE} FORMAT CSV" < /tmp/ros/ct_errors_extracted.csv
+                                    """
+                                }
                             }
                         }
                     }
@@ -193,10 +233,18 @@ spec:
     post {
         always {
             script {
-                sh "helm uninstall gemd -n ${K8S_NS} || true"
+                container('helm') {
+                    withCredentials([file(credentialsId: 'kubecfg-gemd', variable: 'KUBECONFIG')]) {
+                        sh "helm uninstall gemd -n ${K8S_NS} || true"
+                    }
+                }
 
-                // Also ns can be deleted, if kubectl token allows ns delete operation
-                // sh "kubectl delete namespace ${K8S_NS} || true"
+                container('kubectl') {
+                    withCredentials([file(credentialsId: 'kubecfg-gemd', variable: 'KUBECONFIG')]) {
+                        // Also ns can be deleted, if kubectl token allows ns delete operation
+                        sh "kubectl delete namespace ${K8S_NS} --ignore-not-found=true || true"
+                    }
+                }
             }
         }
         success {
